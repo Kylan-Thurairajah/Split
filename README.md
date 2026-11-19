@@ -6,7 +6,7 @@ Split is a shared shopping cart for groups. Add what you need, decide how to div
 
 **Product demo video** · Recording slot reserved.
 
-![Apartment Essentials cart with five items and a live participant breakdown](docs/screenshots/cart.jpg)
+![Apartment Essentials cart in dark mode with five items and a live participant breakdown](docs/screenshots/cart.jpg)
 
 [Allocation editor](docs/screenshots/allocation.jpg) · [Checkout review](docs/screenshots/checkout.jpg) · [Shared receipt](docs/screenshots/receipt.jpg)
 
@@ -67,4 +67,4 @@ The root `Dockerfile` packages both builds for a host that runs containers. Prov
 
 ## Record the demo
 
-Start from a fresh landing page and use a desktop viewport around 1440 × 960. Open **Try Split**, share the URL with a second tab, and add an item from one tab. Show the change in the other tab, open the allocation editor, and split the cost three ways. Finish by reviewing checkout and holding briefly on the completed demo receipt. Use the same flow to capture the four screenshots above.
+Start from a fresh landing page and use a desktop viewport around 1440 × 960. Turn on dark mode to match the screenshots. Open **Try Split**, share the URL with a second tab, and add an item from one tab. Show the change in the other tab, open the allocation editor, and split the cost three ways. Finish by reviewing checkout and holding briefly on the completed demo receipt.
