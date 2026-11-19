@@ -1,0 +1,30 @@
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/inter-latin.woff2") format("woff2");
+}
+
+body {
+  background: #faf9f7;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-testid="item-row"], [data-testid="allocation-badge"] {
+    animation: split-enter 180ms ease-out;
+  }
+  [data-testid="checkout-success"] {
+    animation: split-confirm 220ms ease-out;
+  }
+}
+
+@keyframes split-enter {
+  from { opacity: 0.48; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes split-confirm {
+  from { opacity: 0.6; transform: scale(0.85); }
+  to { opacity: 1; transform: scale(1); }
+}

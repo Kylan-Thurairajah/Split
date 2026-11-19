@@ -1,0 +1,18 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: split
+      POSTGRES_PASSWORD: split
+      POSTGRES_DB: split
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U split -d split"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+volumes:
+  db_data:

@@ -1,0 +1,10 @@
+.git
+.split-cache
+**/.cache
+**/node_modules
+**/.expo
+**/dist
+**/.env*
+**/playwright-report
+**/test-results
+**/*.exe

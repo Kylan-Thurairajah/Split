@@ -1,0 +1,54 @@
+name: Checks
+on: [push, pull_request]
+jobs:
+  mvp:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: split
+          POSTGRES_PASSWORD: split
+          POSTGRES_DB: split
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U split -d split"
+          --health-interval 3s --health-timeout 3s --health-retries 15
+    env:
+      DATABASE_URL: postgres://split:split@localhost:5432/split?sslmode=disable
+      TEST_DATABASE_URL: postgres://split:split@localhost:5432/split?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - working-directory: backend
+        run: go test -race ./...
+      - working-directory: frontend
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+          npx expo export --platform web
+          npx playwright install --with-deps chromium
+      - name: Test the exported app
+        env:
+          STATIC_DIR: ${{ github.workspace }}/frontend/dist
+          SPLIT_WEB_URL: http://localhost:8080
+          PORT: 8080
+        run: |
+          (cd backend && go build -o /tmp/split-api .)
+          /tmp/split-api &
+          for attempt in {1..30}; do
+            if curl --fail --silent http://localhost:8080/ > /dev/null; then break; fi
+            sleep 1
+          done
+          cd frontend
+          npx playwright test
