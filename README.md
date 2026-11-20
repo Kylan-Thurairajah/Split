@@ -4,6 +4,8 @@ One cart. Multiple people. Zero awkward math.
 
 Split is a shared shopping cart for groups. Add what you need, decide how to divide each item, and see everyone's share update live. Run a demo checkout to get an itemized receipt.
 
+**[Try Split live](https://split-os0j.onrender.com/)**
+
 **Product demo video** · Recording slot reserved.
 
 ![Apartment Essentials cart in dark mode with five items and a live participant breakdown](docs/screenshots/cart.jpg)
@@ -62,6 +64,12 @@ In `frontend`, run `npm run typecheck`, `npm test`, and `npm run build`. With bo
 ## Deploy the browser app
 
 Run `npm ci` and `npm run build` in `frontend`. Build Go in `backend` and configure it with `DATABASE_URL`, `PORT`, and `STATIC_DIR` pointing to the exported `frontend/dist`. A same-origin HTTPS deployment keeps API and secure WebSocket traffic on one host. If serving the client separately, set `EXPO_PUBLIC_API_URL` before building and configure `ALLOWED_ORIGIN` on the server.
+
+For Neon, use the direct connection string as the Go server's `DATABASE_URL`. The server applies its schema migrations on startup. If the Neon CLI writes `DATABASE_URL_UNPOOLED` to the root `.env.local`, you can load it into the current PowerShell session from the repository root:
+
+```powershell
+$env:DATABASE_URL = node --env-file=.env.local -p "process.env.DATABASE_URL_UNPOOLED"
+```
 
 The root `Dockerfile` packages both builds for a host that runs containers. Provide a reachable PostgreSQL database using `DATABASE_URL` and configure the HTTPS proxy to support WebSocket upgrades. Run a single API instance so all tabs share the same WebSocket rooms.
 
