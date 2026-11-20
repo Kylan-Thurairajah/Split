@@ -6,8 +6,6 @@ Split is a shared shopping cart for groups. Add what you need, decide how to div
 
 **[Try Split live](https://split-os0j.onrender.com/)**
 
-**Product demo video** · Recording slot reserved.
-
 ![Apartment Essentials cart in dark mode with five items and a live participant breakdown](docs/screenshots/cart.jpg)
 
 [Allocation editor](docs/screenshots/allocation.jpg) · [Checkout review](docs/screenshots/checkout.jpg) · [Shared receipt](docs/screenshots/receipt.jpg)
@@ -60,21 +58,3 @@ The cart URL grants edit access to anyone who has it. Each demo starts with a fr
 Run `go test ./...` in `backend`. Set `TEST_DATABASE_URL` to a local test database to include persistence and concurrency checks.
 
 In `frontend`, run `npm run typecheck`, `npm test`, and `npm run build`. With both servers running, use `npx playwright install chromium` and then `npx playwright test` to exercise the two-tab journey. Set `SPLIT_WEB_URL` if testing an exported build on a different port.
-
-## Deploy the browser app
-
-GitHub Actions runs the `Checks` workflow on pushes and pull requests. For a GitHub-connected Render service, set **Settings → Auto-Deploy → After CI Checks Pass** to deploy changes to the linked branch after the checks pass.
-
-Run `npm ci` and `npm run build` in `frontend`. Build Go in `backend` and configure it with `DATABASE_URL`, `PORT`, and `STATIC_DIR` pointing to the exported `frontend/dist`. A same-origin HTTPS deployment keeps API and secure WebSocket traffic on one host. If serving the client separately, set `EXPO_PUBLIC_API_URL` before building and configure `ALLOWED_ORIGIN` on the server.
-
-For Neon, use the direct connection string as the Go server's `DATABASE_URL`. The server applies its schema migrations on startup. If the Neon CLI writes `DATABASE_URL_UNPOOLED` to the root `.env.local`, you can load it into the current PowerShell session from the repository root:
-
-```powershell
-$env:DATABASE_URL = node --env-file=.env.local -p "process.env.DATABASE_URL_UNPOOLED"
-```
-
-The root `Dockerfile` packages both builds for a host that runs containers. Provide a reachable PostgreSQL database using `DATABASE_URL` and configure the HTTPS proxy to support WebSocket upgrades. Run a single API instance so all tabs share the same WebSocket rooms.
-
-## Record the demo
-
-Start from a fresh landing page and use a desktop viewport around 1440 × 960. Turn on dark mode to match the screenshots. Open **Try Split**, share the URL with a second tab, and add an item from one tab. Show the change in the other tab, open the allocation editor, and split the cost three ways. Finish by reviewing checkout and holding briefly on the completed demo receipt.

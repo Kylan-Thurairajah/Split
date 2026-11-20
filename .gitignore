@@ -10,3 +10,10 @@ test-results/
 .split-cache/
 .cache/
 *.exe
+
+# Local project notes
+/AGENTS.md
+/ARCHITECTURE.md
+/DESIGN.md
+/NEXT.md
+/PRODUCT.md
