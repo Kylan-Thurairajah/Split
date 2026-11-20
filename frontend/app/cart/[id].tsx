@@ -6,7 +6,7 @@ import { ArrowLeft, Check, Clipboard, Link2, Plus, ReceiptText, RotateCcw, Shopp
 import { useCart } from '../../src/api';
 import { Breakdown, ItemRow, Readiness, ReceiptItems } from '../../src/cart-parts';
 import { AllocationBar, AllocationEditor, ItemEditor, useReducedMotion } from '../../src/editors';
-import { dollars, reprice } from '../../src/model';
+import { dollars, receiptText, reprice } from '../../src/model';
 import type { Cart, Change, Item } from '../../src/model';
 import { Avatar, AvatarStack, Brand, Button, Copy, IconButton, Notice, Panel, Price, Sheet, ThemeButton, useTheme } from '../../src/ui';
 
@@ -57,6 +57,17 @@ function CartDocument({ cart, receipt, actor, pending, error, back, confirm, res
   confirm: () => void; reset: () => void;
 }) {
   const { colors } = useTheme();
+  function downloadReceipt() {
+    const url = URL.createObjectURL(new Blob([receiptText(cart)], { type: 'text/plain;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'split-receipt.txt';
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   return <View style={{ width: '100%', maxWidth: 603, alignSelf: 'center', paddingHorizontal: 16, paddingVertical: 26, gap: 13 }}>
     {!receipt && <Button label="Back to cart" icon={ArrowLeft} variant="quiet" compact onPress={back} style={{ alignSelf: 'flex-start' }} />}
     <Panel style={{ overflow: 'hidden' }}>
@@ -84,6 +95,8 @@ function CartDocument({ cart, receipt, actor, pending, error, back, confirm, res
         {!receipt && <Readiness cart={cart} />}
         <Copy muted size={13}>This is a simulated checkout. No charge or order is created.</Copy>
         {!!error && <Notice>{error}</Notice>}
+        {receipt && typeof document !== 'undefined' &&
+          <Button label="Download receipt" icon={ReceiptText} variant="secondary" onPress={downloadReceipt} />}
         {receipt ?
           <Button label={cart.demo ? 'Reset demo' : 'Start a new cart'} icon={RotateCcw} onPress={cart.demo ? reset : back} /> :
           <Button label="Confirm demo checkout" icon={Check} busy={pending} onPress={confirm} disabled={!cart.items.length} />}

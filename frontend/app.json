@@ -1,1 +1,1 @@
-{"expo":{"name":"Split","slug":"split","scheme":"split","platforms":["web"],"web":{"bundler":"metro","output":"single"},"plugins":["expo-router"]}}
+{"expo":{"name":"Split","slug":"split","scheme":"split","platforms":["web"],"web":{"bundler":"metro","output":"single","favicon":"./assets/favicon.png"},"plugins":["expo-router"]}}

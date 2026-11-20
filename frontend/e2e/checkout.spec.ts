@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 
 test('two tabs share edits, allocations and a completed demo receipt', async ({ page, context }) => {
   await page.goto('/');
@@ -44,6 +45,16 @@ test('two tabs share edits, allocations and a completed demo receipt', async ({ 
   await expect(second.getByText('Reading pillow × 2', { exact: true })).toBeVisible();
   await second.reload();
   await expect(second.getByText('Reading pillow × 2', { exact: true })).toBeVisible();
+
+  const downloaded = second.waitForEvent('download');
+  await second.getByRole('button', { name: 'Download receipt', exact: true }).click();
+  const receipt = await downloaded;
+  expect(receipt.suggestedFilename()).toBe('split-receipt.txt');
+  const contents = await readFile(await receipt.path(), 'utf8');
+  expect(contents).toContain('Reading pillow × 2 — $20.00');
+  expect(contents).toContain('Group total: $307.94');
+  expect(contents).toContain('Jordan: $106.32');
+  expect(contents).toContain('Simulated checkout');
 
   await page.getByRole('button', { name: 'Reset demo', exact: true }).click();
   await page.getByRole('button', { name: 'Confirm reset', exact: true }).click();

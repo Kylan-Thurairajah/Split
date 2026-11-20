@@ -18,7 +18,7 @@ Split is a shared shopping cart for groups. Add what you need, decide how to div
 - Share a cart link and switch between Alex, Jordan, and Sam.
 - Assign an item to one person, split it equally, or enter exact amounts.
 - Follow live changes across browser tabs and complete a simulated checkout.
-- View the saved receipt, reset the demo, or switch between light and dark themes.
+- View or download the saved receipt, reset the demo, or switch between light and dark themes.
 
 ## Run locally
 
@@ -62,6 +62,8 @@ Run `go test ./...` in `backend`. Set `TEST_DATABASE_URL` to a local test databa
 In `frontend`, run `npm run typecheck`, `npm test`, and `npm run build`. With both servers running, use `npx playwright install chromium` and then `npx playwright test` to exercise the two-tab journey. Set `SPLIT_WEB_URL` if testing an exported build on a different port.
 
 ## Deploy the browser app
+
+GitHub Actions runs the `Checks` workflow on pushes and pull requests. For a GitHub-connected Render service, set **Settings → Auto-Deploy → After CI Checks Pass** to deploy changes to the linked branch after the checks pass.
 
 Run `npm ci` and `npm run build` in `frontend`. Build Go in `backend` and configure it with `DATABASE_URL`, `PORT`, and `STATIC_DIR` pointing to the exported `frontend/dist`. A same-origin HTTPS deployment keeps API and secure WebSocket traffic on one host. If serving the client separately, set `EXPO_PUBLIC_API_URL` before building and configure `ALLOWED_ORIGIN` on the server.
 

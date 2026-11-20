@@ -20,4 +20,4 @@ M6 complete. The browser MVP is ready for demo recording.
 
 ## Next
 
-Record the 30–60 second demo and add it to the README. Deployment configuration is ready for a host that runs the Go API with PostgreSQL and supports WebSocket upgrades.
+The public demo is deployed on Render. Completed checkouts now have a downloadable text receipt. Next, let visitors name the guests in a new cart so they can demo Split with their own group, then record the 30–60 second walkthrough for the README.

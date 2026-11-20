@@ -34,6 +34,28 @@ export function dollars(cents: number): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
 }
 
+export function receiptText(cart: Cart): string {
+  const lines = [
+    'Split · Demo checkout receipt',
+    cart.name,
+    ...(cart.completedAt ? [new Date(cart.completedAt).toISOString()] : []),
+    '',
+    ...cart.items.flatMap(item => [
+      item.name + ' × ' + item.quantity + ' — ' + dollars(item.unitCents * item.quantity),
+      ...cart.participants
+        .filter(person => (item.allocations?.[person.id] ?? 0) > 0)
+        .map(person => '  ' + person.name + ': ' + dollars(item.allocations?.[person.id] ?? 0)),
+    ]),
+    '',
+    'Group total: ' + dollars(cart.totalCents),
+    ...cart.participants.map(person => person.name + ': ' + dollars(cart.totals[person.id] ?? 0)),
+    '',
+    'Simulated checkout. No charge or order was created.',
+    '',
+  ];
+  return lines.join('\n');
+}
+
 export function parseCents(input: string): number | null {
   const parts = /^(\d{0,9})(?:\.(\d{0,2}))?$/.exec(input.trim());
   return parts && (parts[1] || parts[2]) ? Number(parts[1]) * 100 + Number((parts[2] ?? '').padEnd(2, '0')) : null;
