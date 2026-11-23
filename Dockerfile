@@ -3,6 +3,7 @@ WORKDIR /app
 COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ ./
+ARG EXPO_PUBLIC_NEON_AUTH_URL
 RUN npm run build
 
 FROM golang:1.24-alpine AS api

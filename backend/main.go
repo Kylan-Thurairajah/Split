@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"log"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -28,8 +30,23 @@ func main() {
 	}
 	defer pool.Close()
 	store := Store{pool: pool}
-	if err := store.migrate(startup); err != nil {
-		log.Fatalf("initialize PostgreSQL: %v", err)
+	switch os.Getenv("SPLIT_DB_MODE") {
+	case "", "auto":
+		if err := store.migrate(startup); err != nil {
+			log.Fatalf("initialize PostgreSQL: %v", err)
+		}
+	case "migrate":
+		if err := store.migrate(startup); err != nil {
+			log.Fatalf("migrate PostgreSQL: %v", err)
+		}
+		log.Print("Split database migrations applied")
+		return
+	case "runtime":
+		if err := pool.Ping(startup); err != nil {
+			log.Fatalf("connect to PostgreSQL: %v", err)
+		}
+	default:
+		log.Fatal("SPLIT_DB_MODE must be auto, migrate, or runtime")
 	}
 	cancel()
 
@@ -59,14 +76,28 @@ func main() {
 		origins[strings.TrimSpace(origin)] = true
 	}
 	api := API{store: store, hub: &Hub{rooms: make(map[string]map[chan Cart]struct{})}, origins: origins}
+	if base := strings.TrimRight(strings.TrimSpace(os.Getenv("NEON_AUTH_BASE_URL")), "/"); base != "" {
+		endpoint, err := url.Parse(base)
+		if err != nil || endpoint.RawQuery != "" || endpoint.Fragment != "" {
+			log.Fatal("Invalid NEON_AUTH_BASE_URL")
+		}
+		origin := endpoint.Scheme + "://" + endpoint.Host
+		verifier, err := newAuthVerifier(base+"/.well-known/jwks.json", origin, origin)
+		if err != nil {
+			log.Fatal(err)
+		}
+		api.verifier = verifier
+		api.tickets = newSocketTickets()
+	}
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 	server := &http.Server{
-		Addr: ":" + port, Handler: api.routes(os.Getenv("STATIC_DIR")),
+		Addr:              net.JoinHostPort(os.Getenv("LISTEN_HOST"), port),
+		Handler:           browserSecurity(api.routes(os.Getenv("STATIC_DIR")), os.Getenv("NEON_AUTH_BASE_URL")),
 		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second,
-		WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second,
+		WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 24 << 10,
 	}
 	go func() {
 		<-ctx.Done()

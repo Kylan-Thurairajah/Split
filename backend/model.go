@@ -10,9 +10,10 @@ import (
 )
 
 type Participant struct {
-	ID    string `json:"id"`
-	Name  string `json:"name"`
-	Color string `json:"color"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Color    string `json:"color"`
+	Inactive bool   `json:"inactive,omitempty"`
 }
 
 type Item struct {
@@ -28,14 +29,17 @@ type Item struct {
 }
 
 type Activity struct {
-	Actor string `json:"actor"`
-	Text  string `json:"text"`
+	Actor     string    `json:"actor"`
+	Text      string    `json:"text"`
+	CreatedAt time.Time `json:"createdAt"`
+	Name      string    `json:"name,omitempty"`
 }
 
 type Cart struct {
 	ID           string           `json:"id"`
 	Name         string           `json:"name"`
 	Demo         bool             `json:"demo"`
+	Private      bool             `json:"private,omitempty"`
 	Version      int64            `json:"version"`
 	Participants []Participant    `json:"participants"`
 	Items        []Item           `json:"items"`
@@ -43,6 +47,9 @@ type Cart struct {
 	Totals       map[string]int64 `json:"totals"`
 	CompletedAt  *time.Time       `json:"completedAt,omitempty"`
 	Activity     *Activity        `json:"activity,omitempty"`
+	Activities   []Activity       `json:"activities,omitempty"`
+	Access       string           `json:"access,omitempty"`
+	ActorID      string           `json:"actorId,omitempty"`
 }
 
 type Mutation struct {
@@ -54,9 +61,9 @@ type Mutation struct {
 }
 
 var participants = []Participant{
-	{"alex", "Alex", "#A68BDC"},
-	{"jordan", "Jordan", "#75B9AD"},
-	{"sam", "Sam", "#F4AE75"},
+	{ID: "alex", Name: "Alex", Color: "#A68BDC"},
+	{ID: "jordan", Name: "Jordan", Color: "#75B9AD"},
+	{ID: "sam", Name: "Sam", Color: "#F4AE75"},
 }
 
 const (
@@ -193,6 +200,18 @@ func (cart *Cart) apply(m Mutation, now time.Time) error {
 		if item.Category == "" {
 			item.Category = "other"
 		}
+		index := cart.itemIndex(item.ID)
+		if err := calculateAllocations(&item, cart.Participants); err != nil {
+			return err
+		}
+		for _, person := range cart.Participants {
+			if !person.Inactive || item.Allocations[person.ID] == 0 {
+				continue
+			}
+			if index == -1 || cart.Items[index].Allocations[person.ID] == 0 {
+				return errors.New("A removed member cannot be assigned new items.")
+			}
+		}
 		if item.ID == "" {
 			if len(cart.Items) >= maxItems {
 				return fmt.Errorf("This cart can hold up to %d items.", maxItems)
@@ -201,7 +220,6 @@ func (cart *Cart) apply(m Mutation, now time.Time) error {
 			cart.Items = append(cart.Items, item)
 			activity = "added " + item.Name
 		} else {
-			index := cart.itemIndex(item.ID)
 			if index == -1 {
 				return errors.New("This item no longer exists.")
 			}
@@ -220,7 +238,10 @@ func (cart *Cart) apply(m Mutation, now time.Time) error {
 			return errors.New("Add an item before checkout.")
 		}
 		cart.CompletedAt = &now
-		activity = "completed demo checkout"
+		activity = "completed checkout"
+		if cart.Demo {
+			activity = "completed demo checkout"
+		}
 	case "reset":
 		if !cart.Demo {
 			return errors.New("Demo reset is only available on seeded carts.")
@@ -235,9 +256,34 @@ func (cart *Cart) apply(m Mutation, now time.Time) error {
 	if err := cart.recalculate(); err != nil {
 		return err
 	}
-	cart.Version++
-	cart.Activity = &Activity{Actor: m.Actor, Text: activity}
+	cart.record(m.Actor, activity, now)
 	return nil
+}
+
+func (cart Cart) hasAllocation(id string) bool {
+	for _, item := range cart.Items {
+		if _, found := item.Allocations[id]; found {
+			return true
+		}
+	}
+	return false
+}
+
+func (cart *Cart) record(actor, text string, now time.Time) {
+	cart.Version++
+	cart.Activity = &Activity{Actor: actor, Text: text, CreatedAt: now}
+	if cart.Private {
+		for _, person := range cart.Participants {
+			if person.ID == actor {
+				cart.Activity.Name = person.Name
+				break
+			}
+		}
+		cart.Activities = append([]Activity{*cart.Activity}, cart.Activities...)
+		if len(cart.Activities) > 100 {
+			cart.Activities = cart.Activities[:100]
+		}
+	}
 }
 
 func (cart Cart) itemIndex(id string) int {

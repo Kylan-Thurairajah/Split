@@ -1,5 +1,5 @@
 export type Mode = 'owner' | 'equal' | 'custom';
-export type Participant = { id: string; name: string; color: string };
+export type Participant = { id: string; name: string; color: string; inactive?: boolean };
 export type Item = {
   id?: string;
   name: string;
@@ -22,6 +22,9 @@ export type Cart = {
   totals: Record<string, number>;
   completedAt?: string;
   activity?: { actor: string; text: string };
+  activities?: { actor: string; text: string; createdAt: string }[];
+  access?: 'owner' | 'member';
+  actorId?: string;
 };
 export type Change = {
   version?: number;
@@ -36,7 +39,7 @@ export function dollars(cents: number): string {
 
 export function receiptText(cart: Cart): string {
   const lines = [
-    'Split · Demo checkout receipt',
+    cart.demo ? 'Split · Demo checkout receipt' : 'Split · Checkout receipt',
     cart.name,
     ...(cart.completedAt ? [new Date(cart.completedAt).toISOString()] : []),
     '',
@@ -49,11 +52,14 @@ export function receiptText(cart: Cart): string {
     '',
     'Group total: ' + dollars(cart.totalCents),
     ...cart.participants.map(person => person.name + ': ' + dollars(cart.totals[person.id] ?? 0)),
-    '',
-    'Simulated checkout. No charge or order was created.',
+    ...(cart.demo ? ['', 'Simulated checkout. No charge or order was created.'] : []),
     '',
   ];
   return lines.join('\n');
+}
+
+export function activityText(cart: Cart, text: string): string {
+  return !cart.demo && text === 'completed demo checkout' ? 'completed checkout' : text;
 }
 
 export function parseCents(input: string): number | null {

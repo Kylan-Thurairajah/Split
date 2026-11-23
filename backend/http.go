@@ -18,12 +18,18 @@ import (
 )
 
 type API struct {
-	store   Store
-	hub     *Hub
-	origins map[string]bool
+	store    Store
+	hub      *Hub
+	origins  map[string]bool
+	verifier identityVerifier
+	tickets  *socketTickets
+	limits   *requestLimits
 }
 
 func (api API) routes(staticDir string) http.Handler {
+	if api.limits == nil {
+		api.limits = &requestLimits{}
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
 		if err := api.store.pool.Ping(r.Context()); err != nil {
@@ -36,6 +42,14 @@ func (api API) routes(staticDir string) http.Handler {
 	mux.HandleFunc("GET /api/carts/{id}", api.read)
 	mux.HandleFunc("PATCH /api/carts/{id}", api.mutate)
 	mux.HandleFunc("GET /api/carts/{id}/ws", api.socket)
+	mux.HandleFunc("GET /api/me", api.me)
+	mux.HandleFunc("PATCH /api/me", api.updateProfile)
+	mux.HandleFunc("GET /api/me/carts", api.myCarts)
+	mux.HandleFunc("POST /api/carts/{id}/ws-ticket", api.socketTicket)
+	mux.HandleFunc("POST /api/carts/{id}/invites", api.invite)
+	mux.HandleFunc("DELETE /api/carts/{id}/invites", api.revokeInvites)
+	mux.HandleFunc("POST /api/invites/redeem", api.redeemInvite)
+	mux.HandleFunc("DELETE /api/carts/{id}/members/{member}", api.removeMember)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusNotFound, "Endpoint not found.")
 	})
@@ -75,8 +89,8 @@ func (api API) routes(staticDir string) http.Handler {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
 			}
 			if r.Method == http.MethodOptions {
-				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS")
-				w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 				w.WriteHeader(http.StatusNoContent)
 				return
 			}
@@ -96,18 +110,39 @@ func (api API) allowOrigin(r *http.Request) bool {
 
 func (api API) create(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Demo bool   `json:"demo"`
-		Name string `json:"name"`
+		Demo    bool   `json:"demo"`
+		Name    string `json:"name"`
+		Private bool   `json:"private"`
 	}
 	if !readBody(w, r, &body) {
 		return
 	}
 	body.Name = strings.TrimSpace(body.Name)
+	if body.Demo && body.Private {
+		fail(w, http.StatusUnprocessableEntity, "Seeded demos are separate from private carts.")
+		return
+	}
 	if !body.Demo && (body.Name == "" || len([]rune(body.Name)) > 100) {
 		fail(w, http.StatusUnprocessableEntity, "Enter a cart name up to 100 characters.")
 		return
 	}
-	cart, err := api.store.create(r.Context(), body.Demo, body.Name)
+	var cart Cart
+	var err error
+	if body.Private {
+		identity, ok := api.requireIdentity(w, r)
+		if !ok {
+			return
+		}
+		if !api.limit(w, "private-create", identity.Subject, 30) {
+			return
+		}
+		cart, err = api.store.createPrivate(r.Context(), identity, body.Name)
+	} else {
+		if !api.limit(w, "anonymous-create", requestIP(r), 60) {
+			return
+		}
+		cart, err = api.store.create(r.Context(), body.Demo, body.Name)
+	}
 	if err != nil {
 		handleError(w, err)
 		return
@@ -116,7 +151,8 @@ func (api API) create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api API) read(w http.ResponseWriter, r *http.Request) {
-	cart, err := api.store.read(r.Context(), r.PathValue("id"))
+	identity, _ := api.identity(r)
+	cart, err := api.store.read(r.Context(), r.PathValue("id"), identity.Subject)
 	if err != nil {
 		handleError(w, err)
 		return
@@ -129,7 +165,8 @@ func (api API) mutate(w http.ResponseWriter, r *http.Request) {
 	if !readBody(w, r, &change) {
 		return
 	}
-	cart, err := api.store.mutate(r.Context(), r.PathValue("id"), change)
+	identity, _ := api.identity(r)
+	cart, err := api.store.mutate(r.Context(), r.PathValue("id"), identity.Subject, change)
 	if errors.Is(err, errConflict) {
 		sendJSON(w, http.StatusConflict, cart)
 		return
@@ -143,11 +180,33 @@ func (api API) mutate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api API) socket(w http.ResponseWriter, r *http.Request) {
+	if !api.limit(w, "ws-upgrade", requestIP(r), 120) {
+		return
+	}
 	id := r.PathValue("id")
-	updates, unsubscribe := api.hub.subscribe(id)
+	var identity Identity
+	if token := r.URL.Query().Get("ticket"); token != "" {
+		if api.tickets == nil {
+			handleError(w, errUnauthenticated)
+			return
+		}
+		var err error
+		identity, err = api.tickets.redeem(token, id)
+		if err != nil {
+			handleError(w, errUnauthenticated)
+			return
+		}
+	}
+	initial, err := api.store.read(r.Context(), id, identity.Subject)
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+	updates, revoked, unsubscribe := api.hub.subscribe(id, initial.ActorID)
 	defer unsubscribe()
-
-	initial, err := api.store.read(r.Context(), id)
+	// Re-read after subscribing so a concurrent commit between the two steps
+	// cannot be missed and a removed member cannot open a new socket.
+	initial, err = api.store.read(r.Context(), id, identity.Subject)
 	if err != nil {
 		handleError(w, err)
 		return
@@ -158,6 +217,12 @@ func (api API) socket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer conn.Close()
+	var credentialExpired <-chan time.Time
+	if initial.Private {
+		expiry := time.NewTimer(time.Until(identity.ExpiresAt))
+		defer expiry.Stop()
+		credentialExpired = expiry.C
+	}
 
 	const heartbeat = 25 * time.Second
 	done := make(chan struct{})
@@ -179,6 +244,19 @@ func (api API) socket(w http.ResponseWriter, r *http.Request) {
 		conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		return conn.WriteJSON(cart)
 	}
+	closeAccess := func() {
+		_ = conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "Cart access ended."), time.Now().Add(time.Second))
+	}
+	select {
+	case <-revoked:
+		closeAccess()
+		return
+	default:
+	}
+	if initial.Private && !time.Now().Before(identity.ExpiresAt) {
+		closeAccess()
+		return
+	}
 	if write(initial) != nil {
 		return
 	}
@@ -191,14 +269,39 @@ func (api API) socket(w http.ResponseWriter, r *http.Request) {
 			return
 		case <-r.Context().Done():
 			return
+		case <-credentialExpired:
+			closeAccess()
+			return
+		case <-revoked:
+			closeAccess()
+			return
 		case cart := <-updates:
 			if cart.Version > version {
+				if initial.Private {
+					if !time.Now().Before(identity.ExpiresAt) {
+						closeAccess()
+						return
+					}
+					// Reauthorize against the latest committed membership, never
+					// reuse the broadcasting client's role or actor ID.
+					cart, err = api.store.read(r.Context(), id, identity.Subject)
+					if err != nil {
+						closeAccess()
+						return
+					}
+				}
 				if write(cart) != nil {
 					return
 				}
 				version = cart.Version
 			}
 		case <-ticker.C:
+			if initial.Private {
+				if _, err := api.store.read(r.Context(), id, identity.Subject); err != nil {
+					closeAccess()
+					return
+				}
+			}
 			if conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(5*time.Second)) != nil {
 				return
 			}
@@ -218,6 +321,13 @@ func readBody(w http.ResponseWriter, r *http.Request, out any) bool {
 func handleError(w http.ResponseWriter, err error) {
 	var validation validationError
 	switch {
+	case errors.Is(err, errUnauthenticated):
+		w.Header().Set("WWW-Authenticate", "Bearer")
+		fail(w, http.StatusUnauthorized, "Sign in to continue.")
+	case errors.Is(err, errOwnerRequired):
+		fail(w, http.StatusForbidden, "Only the cart owner can do that.")
+	case errors.Is(err, errInviteUnavailable):
+		fail(w, http.StatusNotFound, "This invitation is invalid, expired, or no longer available.")
 	case errors.Is(err, pgx.ErrNoRows):
 		fail(w, http.StatusNotFound, "Cart not found or expired.")
 	case errors.As(err, &validation):

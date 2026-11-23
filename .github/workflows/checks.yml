@@ -52,3 +52,20 @@ jobs:
           done
           cd frontend
           npx playwright test
+      - name: Test the account UI with a simulated identity provider
+        env:
+          STATIC_DIR: ${{ github.workspace }}/frontend/dist-account
+          EXPO_PUBLIC_NEON_AUTH_URL: https://split-auth.example.test/auth
+          NEON_AUTH_BASE_URL: https://split-auth.example.test/auth
+          SPLIT_E2E_AUTH_URL: https://split-auth.example.test/auth
+          SPLIT_WEB_URL: http://localhost:8082
+          PORT: 8082
+        working-directory: frontend
+        run: |
+          npx expo export --platform web --output-dir dist-account
+          /tmp/split-api &
+          for attempt in {1..30}; do
+            if curl --fail --silent http://localhost:8082/api/health > /dev/null; then break; fi
+            sleep 1
+          done
+          npx playwright test e2e/account.spec.ts

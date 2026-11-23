@@ -1,10 +1,14 @@
 ﻿import { createContext, useContext, useEffect, useState } from 'react';
 import type { PropsWithChildren, ReactNode } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import type { StyleProp, TextInputProps, TextStyle, ViewStyle } from 'react-native';
 import { Moon, ShoppingBag, Sun, X } from './icons';
 import type { LucideIcon } from './icons';
 import type { Participant } from './model';
+import { profileKey, updateProfile, useProfile } from './api';
+import type { AccountTheme } from './api';
+import { useAuth } from './auth';
 
 const light = {
   background: '#FAF9F7', surface: '#FFFFFF', text: '#252331', muted: '#686473',
@@ -16,19 +20,33 @@ const dark = {
   border: '#3C3448', soft: '#2E2939', accent: '#CEB7F8', tint: '#352A49',
   action: '#D5C0F7', inverse: '#2B213A', danger: '#FFA9B9', green: '#92D4C7',
 };
-const ThemeContext = createContext({ colors: light, darkMode: false, toggle() {} });
+const ThemeContext = createContext({ colors: light, darkMode: false, busy: false, toggle() {} });
 
 export function ThemeProvider({ children }: PropsWithChildren) {
-  const [darkMode, setDarkMode] = useState(false);
+  const [guestDark, setGuestDark] = useState(false);
+  const { user } = useAuth();
+  const profile = useProfile();
+  const cache = useQueryClient();
+  const save = useMutation({
+    mutationFn: ({ theme }: { theme: AccountTheme; account: string }) => updateProfile({ theme }),
+    onSuccess: (updated, { account }) => cache.setQueryData(profileKey(account), updated),
+  });
+  const darkMode = profile.data?.theme ? profile.data.theme === 'dark' : guestDark;
+  const busy = !!user && (!profile.data || save.isPending);
   useEffect(() => {
-    try { setDarkMode(window.localStorage.getItem('split-theme') === 'dark'); } catch {}
+    try { setGuestDark(window.localStorage.getItem('split-theme') === 'dark'); } catch {}
   }, []);
   function toggle() {
+    if (busy) return;
     const next = !darkMode;
-    setDarkMode(next);
+    if (user) {
+      save.mutate({ theme: next ? 'dark' : 'light', account: user.id });
+      return;
+    }
+    setGuestDark(next);
     try { window.localStorage.setItem('split-theme', next ? 'dark' : 'light'); } catch {}
   }
-  return <ThemeContext.Provider value={{ colors: darkMode ? dark : light, darkMode, toggle }}>{children}</ThemeContext.Provider>;
+  return <ThemeContext.Provider value={{ colors: darkMode ? dark : light, darkMode, busy, toggle }}>{children}</ThemeContext.Provider>;
 }
 
 export const useTheme = () => useContext(ThemeContext);
@@ -127,8 +145,8 @@ export function Brand({ onPress }: { onPress?: () => void }) {
 }
 
 export function ThemeButton() {
-  const { darkMode, toggle } = useTheme();
-  return <IconButton label={darkMode ? 'Use light mode' : 'Use dark mode'} icon={darkMode ? Sun : Moon} onPress={toggle} />;
+  const { darkMode, busy, toggle } = useTheme();
+  return <IconButton label={darkMode ? 'Use light mode' : 'Use dark mode'} icon={darkMode ? Sun : Moon} onPress={toggle} disabled={busy} />;
 }
 
 export function Field({ label, ...props }: TextInputProps & { label: string }) {
@@ -142,18 +160,18 @@ export function Field({ label, ...props }: TextInputProps & { label: string }) {
   </View>;
 }
 
-export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+export function Sheet({ title, onClose, children }: { title: string; onClose?: () => void; children: ReactNode }) {
   const { colors } = useTheme();
   return <Modal transparent visible animationType="none" onRequestClose={onClose}>
     <View style={{ flex: 1, backgroundColor: '#1C152763', justifyContent: 'center', alignItems: 'center', padding: 14 }}>
-      <Pressable onPress={onClose} accessible={false} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+      {onClose && <Pressable onPress={onClose} accessible={false} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />}
       <View accessibilityViewIsModal style={{
         width: '100%', maxWidth: 490, maxHeight: '94%', backgroundColor: colors.surface,
         borderRadius: 22, borderWidth: 1, borderColor: colors.border,
       }}>
         <View style={{ paddingTop: 16, paddingHorizontal: 20, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <Copy size={23} weight="700" heading>{title}</Copy>
-          <IconButton label="Close dialog" icon={X} onPress={onClose} />
+          {onClose && <IconButton label="Close dialog" icon={X} onPress={onClose} />}
         </View>
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 20, gap: 16 }}>
           {children}

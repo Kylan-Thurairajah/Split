@@ -1,17 +1,19 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Head from 'expo-router/head';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ActivityIndicator, ScrollView, View, useWindowDimensions } from 'react-native';
 import { ArrowLeft, Check, Clipboard, Link2, Plus, ReceiptText, RotateCcw, ShoppingBag } from '../../src/icons';
-import { useCart } from '../../src/api';
+import { APIError, useCart } from '../../src/api';
+import { useAuth } from '../../src/auth';
+import { CartActivity, InviteManager } from '../../src/cart-sharing';
 import { Breakdown, ItemRow, Readiness, ReceiptItems } from '../../src/cart-parts';
 import { AllocationBar, AllocationEditor, ItemEditor, useReducedMotion } from '../../src/editors';
-import { dollars, receiptText, reprice } from '../../src/model';
+import { activityText, dollars, receiptText, reprice } from '../../src/model';
 import type { Cart, Change, Item } from '../../src/model';
 import { Avatar, AvatarStack, Brand, Button, Copy, IconButton, Notice, Panel, Price, Sheet, ThemeButton, useTheme } from '../../src/ui';
 
 type Dialog = { kind: 'item'; item?: Item; version: number } | { kind: 'allocate'; item: Item; version: number } |
-  { kind: 'remove'; item: Item; version: number } | { kind: 'reset' } | { kind: 'share' };
+  { kind: 'remove'; item: Item; version: number } | { kind: 'reset' } | { kind: 'share' } | { kind: 'invite' };
 
 function Live({ active }: { active: boolean }) {
   const { colors } = useTheme();
@@ -43,9 +45,9 @@ function Summary({ cart, actor, onSelect, onCheckout, compact }: {
     <View style={{ padding: 18, gap: 16 }}>
       <View style={{ gap: 4 }}>
         <Copy size={15} weight="700" heading>Participants</Copy>
-        <Copy size={12} muted>Select a name to switch perspective.</Copy>
+        {!cart.access && <Copy size={12} muted>Select a name to switch perspective.</Copy>}
       </View>
-      <Breakdown cart={cart} actor={actor} interactive onSelect={onSelect} />
+      <Breakdown cart={cart} actor={actor} interactive={!cart.access} onSelect={onSelect} />
       <View style={{ borderTopWidth: 1, paddingTop: 15, borderColor: colors.border }}><Readiness cart={cart} /></View>
       {!compact && <Button label="Review checkout" disabled={cart.items.length === 0} onPress={onCheckout} />}
     </View>
@@ -75,7 +77,7 @@ function CartDocument({ cart, receipt, actor, pending, error, back, confirm, res
         <View testID={receipt ? 'checkout-success' : undefined} style={{ width: 48, height: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 16, backgroundColor: colors.surface, marginBottom: 5 }}>
           {receipt ? <Check size={25} color={colors.green} /> : <ReceiptText size={24} color={colors.accent} strokeWidth={1.7} />}
         </View>
-        <Copy size={31} weight="800" heading style={{ letterSpacing: -1.1, textAlign: 'center' }}>{receipt ? 'Demo checkout complete' : 'Review checkout'}</Copy>
+        <Copy size={31} weight="800" heading style={{ letterSpacing: -1.1, textAlign: 'center' }}>{receipt ? (cart.demo ? 'Demo checkout complete' : 'Checkout complete') : 'Review checkout'}</Copy>
         <Copy size={15} muted>{cart.name}</Copy>
         {receipt && !!cart.completedAt &&
           <Copy size={13} muted>{new Intl.DateTimeFormat('en-US', { dateStyle: 'long' }).format(new Date(cart.completedAt))}</Copy>}
@@ -93,13 +95,13 @@ function CartDocument({ cart, receipt, actor, pending, error, back, confirm, res
           <Copy size={16} weight="700">Group total</Copy><Price size={23}>{dollars(cart.totalCents)}</Price>
         </View>
         {!receipt && <Readiness cart={cart} />}
-        <Copy muted size={13}>This is a simulated checkout. No charge or order is created.</Copy>
+        {cart.demo && <Copy muted size={13}>This is a simulated checkout. No charge or order is created.</Copy>}
         {!!error && <Notice>{error}</Notice>}
         {receipt && typeof document !== 'undefined' &&
           <Button label="Download receipt" icon={ReceiptText} variant="secondary" onPress={downloadReceipt} />}
         {receipt ?
-          <Button label={cart.demo ? 'Reset demo' : 'Start a new cart'} icon={RotateCcw} onPress={cart.demo ? reset : back} /> :
-          <Button label="Confirm demo checkout" icon={Check} busy={pending} onPress={confirm} disabled={!cart.items.length} />}
+          <Button label={cart.demo ? 'Reset demo' : cart.access ? 'My carts' : 'Start a new cart'} icon={RotateCcw} onPress={cart.demo ? reset : back} /> :
+          <Button label={cart.demo ? 'Confirm demo checkout' : 'Confirm checkout'} icon={Check} busy={pending} onPress={confirm} disabled={!cart.items.length} />}
       </View>
     </Panel>
   </View>;
@@ -111,14 +113,15 @@ export default function CartScreen() {
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
   const compact = width < 880;
-  const [actor, setActor] = useState('alex');
+  const auth = useAuth();
+  const [perspective, setActor] = useState('alex');
   const [dialog, setDialog] = useState<Dialog>();
   const [review, setReview] = useState(false);
   const [completion, setCompletion] = useState(false);
   const [copied, setCopied] = useState(false);
   const reduced = useReducedMotion();
-  const { query, mutation, connected } = useCart(id, actor);
-  const cart = query.data;
+  const { query, mutation, connected, cart } = useCart(id, perspective);
+  const actor = cart?.actorId ?? perspective;
   const error = mutation.error?.message ?? '';
   const busy = mutation.isPending;
   const close = () => { if (!busy) { setDialog(undefined); mutation.reset(); } };
@@ -132,7 +135,7 @@ export default function CartScreen() {
   useEffect(() => {
     if (!cart?.completedAt) return;
     setReview(false);
-    setDialog(previous => previous?.kind === 'share' || previous?.kind === 'reset' ? previous : undefined);
+    setDialog(previous => previous?.kind === 'share' || previous?.kind === 'reset' || previous?.kind === 'invite' ? previous : undefined);
   }, [cart?.completedAt]);
 
   function commit(change: Change, options: { close?: boolean; version?: number } = {}) {
@@ -150,7 +153,12 @@ export default function CartScreen() {
   if (!cart) return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background, gap: 15, padding: 20 }}>
     <Brand onPress={() => router.replace('/')} />
     {query.isPending ? <ActivityIndicator color={colors.accent} /> : <>
-      <Notice>{query.error?.message ?? 'This cart is unavailable.'}</Notice>
+      <Notice>{query.error instanceof APIError && [403, 404].includes(query.error.status) && auth.user
+        ? 'This cart is unavailable. You may no longer have access.'
+        : query.error?.message ?? 'This cart is unavailable.'}</Notice>
+      {auth.enabled && !auth.user && query.error instanceof APIError && [401, 403, 404].includes(query.error.status) &&
+        <Button label="Sign in" onPress={() => router.push({ pathname: '/sign-in', params: { cart: id } })} />}
+      {auth.user && <Button label="My carts" variant="secondary" onPress={() => router.replace('/my-carts')} />}
       <Button label="Try again" onPress={() => void query.refetch()} />
       <Button label="Back to Split" variant="quiet" onPress={() => router.replace('/')} />
     </>}
@@ -170,13 +178,14 @@ export default function CartScreen() {
         height: 63, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
       }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: compact ? 10 : 18 }}>
-          <Brand onPress={() => router.replace('/')} />
+          <Brand onPress={() => router.replace(cart.access ? '/my-carts' : '/')} />
           {!compact && <View style={{ height: 21, width: 1, backgroundColor: colors.border }} />}
-          {!compact && <Copy muted size={13} weight="600">Shared cart</Copy>}
+          {!compact && <Copy muted size={13} weight="600">{cart.access ? 'Private cart' : 'Shared cart'}</Copy>}
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: compact ? 5 : 11 }}>
           <Live active={connected} />
-          <IconButton label="Share cart" icon={Link2} onPress={() => { setCopied(false); setDialog({ kind: 'share' }); }} />
+          {cart.access === 'owner' && <IconButton label="Invite collaborators" icon={Link2} onPress={() => setDialog({ kind: 'invite' })} />}
+          {!cart.access && <IconButton label="Share cart" icon={Link2} onPress={() => { setCopied(false); setDialog({ kind: 'share' }); }} />}
           <ThemeButton />
           <Avatar person={activePerson} size={29} />
         </View>
@@ -186,11 +195,13 @@ export default function CartScreen() {
       {completion ? <View accessibilityLiveRegion="polite" style={{ alignSelf: 'center', width: '100%', maxWidth: 498, padding: 20, marginTop: 50 }}>
         <Panel style={{ padding: 28, alignItems: 'center', gap: 16 }}>
           {checkedOut ? <View testID="checkout-success"><Check size={31} color={colors.green} /></View> : <ActivityIndicator size="large" color={colors.accent} />}
-          <Copy heading size={24} weight="700">{checkedOut ? 'Demo checkout complete' : 'Completing demo checkout'}</Copy>
+          <Copy heading size={24} weight="700">{checkedOut
+            ? (cart.demo ? 'Demo checkout complete' : 'Checkout complete')
+            : (cart.demo ? 'Completing demo checkout' : 'Completing checkout')}</Copy>
           <AllocationBar people={cart.participants} amounts={checkedOut ? cart.totals : { [cart.participants[0].id]: Math.round(cart.totalCents * 0.46) }} total={cart.totalCents} />
         </Panel>
       </View> : isDocument ? <CartDocument cart={cart} receipt={checkedOut} actor={actor} pending={busy} error={dialog ? '' : error}
-        back={() => { if (checkedOut) router.replace('/'); else { mutation.reset(); setReview(false); } }}
+        back={() => { if (checkedOut) router.replace(cart.access ? '/my-carts' : '/'); else { mutation.reset(); setReview(false); } }}
         reset={() => setDialog({ kind: 'reset' })}
         confirm={() => { setCompletion(true); commit({ action: 'checkout' }, { version: cart.version }); }} /> :
         <View style={{ width: '100%', maxWidth: 1192, alignSelf: 'center', paddingHorizontal: compact ? 14 : 22, paddingTop: compact ? 27 : 39, paddingBottom: 28, gap: 22 }}>
@@ -225,9 +236,10 @@ export default function CartScreen() {
                   onAllocate={() => { mutation.reset(); setDialog({ kind: 'allocate', item, version: cart.version }); }}
                   onQuantity={quantity => commit({ action: 'upsert', item: reprice(item, item.unitCents, quantity) }, { version: cart.version })} />)}
               </Panel>
-              {!!cart.activity && <View accessibilityLiveRegion="polite" style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 3 }}>
+              {cart.access && <CartActivity cart={cart} />}
+              {!cart.access && !!cart.activity && <View accessibilityLiveRegion="polite" style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 3 }}>
                 {activityPerson && <Avatar person={activityPerson} size={21} />}
-                <Copy size={13} muted>{(activityPerson ? activityPerson.name + ' ' : '') + cart.activity.text}</Copy>
+                <Copy size={13} muted>{(activityPerson ? activityPerson.name + ' ' : '') + activityText(cart, cart.activity.text)}</Copy>
               </View>}
             </View>
             <View style={{ width: compact ? '100%' : 316 }}>
@@ -258,6 +270,7 @@ export default function CartScreen() {
       {!!error && <Notice>{error}</Notice>}
       <Button label="Confirm reset" icon={RotateCcw} busy={busy} onPress={() => commit({ action: 'reset' }, { close: true, version: cart.version })} />
     </Sheet>}
+    {dialog?.kind === 'invite' && cart.access === 'owner' && <InviteManager cart={cart} onClose={close} />}
     {dialog?.kind === 'share' && <Sheet title="Share cart" onClose={close}>
       <Copy muted>Open the same link in another browser tab or share it with your group.</Copy>
       <Copy size={14} weight="600" style={{ padding: 12, borderRadius: 8, backgroundColor: colors.soft, overflowWrap: 'anywhere', userSelect: 'text' } as never}>{shareURL}</Copy>

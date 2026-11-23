@@ -1,10 +1,11 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import Head from 'expo-router/head';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { Image, ScrollView, View, useWindowDimensions } from 'react-native';
 import { Plus, ShoppingBag, Users } from '../src/icons';
-import { createCart } from '../src/api';
+import { cartKey, createCart } from '../src/api';
+import { useAuth } from '../src/auth';
 import { AvatarStack, Brand, Button, Copy, Field, Notice, Panel, Price, Sheet, ThemeButton, useTheme } from '../src/ui';
 
 const people = [
@@ -24,6 +25,7 @@ export default function Landing() {
   const compact = width < 820;
   const router = useRouter();
   const cache = useQueryClient();
+  const auth = useAuth();
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -34,7 +36,7 @@ export default function Landing() {
     setError('');
     try {
       const cart = await createCart(demo, name.trim());
-      cache.setQueryData(['cart', cart.id], cart);
+      cache.setQueryData(cartKey(cart.id, auth.user?.id), cart);
       router.push({ pathname: '/cart/[id]', params: { id: cart.id } });
       setShowCreate(false);
     } catch (failure) {
@@ -49,7 +51,11 @@ export default function Landing() {
     <View style={{ borderBottomWidth: 1, borderColor: colors.border }}>
       <View style={{ width: '100%', maxWidth: 1192, alignSelf: 'center', paddingHorizontal: 22, height: 66, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <Brand />
-        <ThemeButton />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {auth.enabled && <Button label={auth.user ? 'My carts' : 'Sign in'} compact variant="quiet"
+            disabled={auth.pending} onPress={() => router.push(auth.user ? '/my-carts' : '/sign-in')} />}
+          <ThemeButton />
+        </View>
       </View>
     </View>
     <View style={{

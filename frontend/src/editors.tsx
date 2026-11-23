@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, Pressable, View } from 'react-native';
 import { CircleCheck, Package, Plus } from './icons';
 import { dollars, parseCents, previewAllocation, reprice } from './model';
@@ -78,13 +78,14 @@ export function AllocationEditor({ item, cart, actor, busy, error, onClose, onSa
   item: Item; cart: Cart; actor: string;
 }) {
   const { colors } = useTheme();
+  const eligible = cart.participants.filter(person => !person.inactive || (item.allocations?.[person.id] ?? 0) > 0);
   const [mode, setMode] = useState<Mode>(item.mode);
   const [members, setMembers] = useState(item.members?.length ? item.members : [actor]);
   const [inputs, setInputs] = useState<Record<string, string>>(() => Object.fromEntries(cart.participants.map(person => [
     person.id, ((item.allocations?.[person.id] ?? 0) / 100).toFixed(2),
   ])));
   const total = item.unitCents * item.quantity;
-  const values = cart.participants.map(person => [person.id, parseCents(inputs[person.id] ?? '')] as const);
+  const values = eligible.map(person => [person.id, parseCents(inputs[person.id] ?? '')] as const);
   const shares = Object.fromEntries(values.map(([id, cents]) => [id, cents ?? 0]));
   const draft = { ...item, mode, members: mode === 'custom' ? [] : members, shares: mode === 'custom' ? shares : {} };
   const amounts = previewAllocation(total, cart.participants, draft);
@@ -94,8 +95,8 @@ export function AllocationEditor({ item, cart, actor, busy, error, onClose, onSa
 
   function select(next: Mode) {
     if (next === mode) return;
-    if (next === 'owner') setMembers([members[0] ?? actor]);
-    if (next === 'equal') setMembers(cart.participants.map(person => person.id));
+    if (next === 'owner') setMembers([members.find(id => eligible.some(person => person.id === id)) ?? actor]);
+    if (next === 'equal') setMembers(eligible.filter(person => !person.inactive).map(person => person.id));
     if (next === 'custom') {
       setInputs(Object.fromEntries(cart.participants.map(person => [person.id, ((amounts[person.id] ?? 0) / 100).toFixed(2)])));
     }
@@ -116,7 +117,7 @@ export function AllocationEditor({ item, cart, actor, busy, error, onClose, onSa
         }}><Copy size={13} weight="700" color={mode === method.mode ? colors.accent : colors.muted}>{method.text}</Copy></Pressable>)}
     </View>
     <View style={{ gap: 10 }}>
-      {cart.participants.map(person => {
+      {eligible.map(person => {
         const selected = members.includes(person.id);
         const toggle = () => setMembers(mode === 'owner' ? [person.id] : selected ? members.filter(id => id !== person.id) : [...members, person.id]);
         return <View key={person.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 42 }}>

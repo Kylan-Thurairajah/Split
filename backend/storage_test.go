@@ -30,7 +30,7 @@ func TestPostgresPersistenceAndConcurrentEdit(t *testing.T) {
 		writers.Add(1)
 		go func() {
 			defer writers.Done()
-			_, err := store.mutate(ctx, cart.ID, change)
+			_, err := store.mutate(ctx, cart.ID, "", change)
 			errs <- err
 		}()
 	}
@@ -50,7 +50,7 @@ func TestPostgresPersistenceAndConcurrentEdit(t *testing.T) {
 	if success != 1 || conflict != 1 {
 		t.Fatalf("successes = %d, conflicts = %d", success, conflict)
 	}
-	got, err := store.read(ctx, cart.ID)
+	got, err := store.read(ctx, cart.ID, "")
 	if err != nil || got.Version != cart.Version+1 || got.Items[0].Quantity != item.Quantity {
 		t.Fatalf("unexpected persisted edit: %+v, %v", got, err)
 	}
@@ -68,14 +68,14 @@ func TestPostgresCheckoutSnapshotSurvivesReset(t *testing.T) {
 	store := integrationStore(t)
 	ctx := context.Background()
 	cart := integrationCart(t, store)
-	completed, err := store.mutate(ctx, cart.ID, Mutation{Version: cart.Version, Action: "checkout", Actor: "sam"})
+	completed, err := store.mutate(ctx, cart.ID, "", Mutation{Version: cart.Version, Action: "checkout", Actor: "sam"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if completed.CompletedAt == nil {
 		t.Fatal("checkout did not mark completion")
 	}
-	reset, err := store.mutate(ctx, cart.ID, Mutation{Version: completed.Version, Action: "reset", Actor: "sam"})
+	reset, err := store.mutate(ctx, cart.ID, "", Mutation{Version: completed.Version, Action: "reset", Actor: "sam"})
 	if err != nil || reset.CompletedAt != nil || reset.Version != completed.Version+1 {
 		t.Fatalf("unexpected reset response: %+v, %v", reset, err)
 	}
@@ -86,7 +86,7 @@ func TestPostgresCheckoutSnapshotSurvivesReset(t *testing.T) {
 	if _, err := store.pool.Exec(ctx, "UPDATE carts SET expires_at = now() - interval '1 second' WHERE id = $1", cart.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.read(ctx, cart.ID); !errors.Is(err, pgx.ErrNoRows) {
+	if _, err := store.read(ctx, cart.ID, ""); !errors.Is(err, pgx.ErrNoRows) {
 		t.Fatalf("expired cart remained accessible: %v", err)
 	}
 	if err := store.cleanup(ctx); err != nil {
