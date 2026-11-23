@@ -52,13 +52,23 @@ function authClient() {
   return client;
 }
 
+// Neon Auth exposes these managed endpoints at runtime, but its adapter types
+// can omit the OTP plugin when npm installs both Better Fetch patch versions.
+type OTPResult = Promise<{ error: { status?: number } | null }>;
+function emailCodeClient() {
+  return authClient() as ReturnType<typeof authClient> & {
+    emailOtp: { sendVerificationOtp(input: { email: string; type: 'sign-in' }): OTPResult };
+    signIn: { emailOtp(input: { email: string; otp: string }): OTPResult };
+  };
+}
+
 export async function sendSignInCode(email: string) {
-  const { error } = await authClient().emailOtp.sendVerificationOtp({ email, type: 'sign-in' });
+  const { error } = await emailCodeClient().emailOtp.sendVerificationOtp({ email, type: 'sign-in' });
   if (error) throw new Error(error.status === 429 ? 'Too many requests. Wait before requesting another code.' : 'We could not send a sign-in code. Try again.');
 }
 
 export async function verifySignInCode(email: string, otp: string) {
-  const { error } = await authClient().signIn.emailOtp({ email, otp });
+  const { error } = await emailCodeClient().signIn.emailOtp({ email, otp });
   if (error) throw new Error(error.status === 429 ? 'Too many attempts. Request a new code in a moment.' : 'That code could not be verified. Check the code or request a new one.');
 }
 
