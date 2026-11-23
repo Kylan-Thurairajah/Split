@@ -72,18 +72,6 @@ export async function verifySignInCode(email: string, otp: string) {
   if (error) throw new Error(error.status === 429 ? 'Too many attempts. Request a new code in a moment.' : 'That code could not be verified. Check the code or request a new one.');
 }
 
-export async function signUpWithPassword(email: string, password: string) {
-  const { data, error } = await authClient().signUp.email({ email, password, name: 'Split member' });
-  if (error) throw new Error(error.status === 429 ? 'Too many attempts. Try again later.' : 'Could not create an account. If you already have one, sign in instead.');
-  return !!data?.token && data.user.emailVerified;
-}
-
-export async function signInWithPassword(email: string, password: string) {
-  const { data, error } = await authClient().signIn.email({ email, password });
-  if (error) throw new Error(error.status === 429 ? 'Too many attempts. Try again later.' : 'Could not sign in with that email and password. You can also sign in with an email code.');
-  return !!data?.user.emailVerified;
-}
-
 export async function signOut() {
   const { error } = await authClient().signOut();
   if (error) throw new Error('Split could not sign you out. Try again.');
