@@ -71,13 +71,14 @@ func TestNeonTokenVerifier(t *testing.T) {
 		{name: "missing subject", claims: map[string]any{"sub": ""}},
 		{name: "anonymous token", claims: map[string]any{"role": "anonymous"}},
 		{name: "banned", claims: map[string]any{"banned": true}},
+		{name: "unverified email", claims: map[string]any{"emailVerified": false}},
 		{name: "unsupported algorithm", header: map[string]any{"alg": "none"}},
 		{name: "unknown key", header: map[string]any{"kid": "unknown"}},
 		{name: "untrusted signature", badSignature: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			header := map[string]any{"alg": "EdDSA", "kid": "expected"}
-			claims := map[string]any{"sub": "account-1", "name": "Example Name", "role": "authenticated", "iss": authTestOrigin, "aud": authTestOrigin, "exp": now + 60}
+			claims := map[string]any{"sub": "account-1", "name": "Example Name", "role": "authenticated", "emailVerified": true, "iss": authTestOrigin, "aud": authTestOrigin, "exp": now + 60}
 			for k, v := range tc.header {
 				header[k] = v
 			}

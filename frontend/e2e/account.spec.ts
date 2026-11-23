@@ -40,6 +40,10 @@ async function mockAccount(context: BrowserContext, baseURL: string, baseAuthURL
     const respond = (json: unknown, headers?: Record<string, string>) => route.fulfill({
       json, headers: { ...authHeaders, ...headers },
     });
+    if (endpoint === '/sign-up/email') {
+      expect(route.request().postDataJSON()).toMatchObject({ email: principal.email, password: 'test-password' });
+      return respond({ user: { ...principal, emailVerified: false }, token: 'mock-session' });
+    }
     if (endpoint === '/email-otp/send-verification-otp') {
       expect(route.request().postDataJSON()).toMatchObject({ email: principal.email, type: 'sign-in' });
       return respond({ success: true });
@@ -95,7 +99,12 @@ test('private carts restore after reload and require a signed-in account', async
 
   await page.goto('/my-carts');
   await expect(page).toHaveURL(/\/sign-in/);
+  await page.getByRole('button', { name: 'Create account with password', exact: true }).click();
   await page.getByRole('textbox', { name: 'Email address', exact: true }).fill(principal.email);
+  await page.getByLabel('Password', { exact: true }).fill('test-password');
+  await page.getByRole('button', { name: 'Create account', exact: true }).click();
+  await page.getByRole('button', { name: 'Continue with an email code', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Email address', exact: true })).toHaveValue(principal.email);
   await page.getByRole('button', { name: 'Send sign-in code', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'Display name', exact: true })).toHaveCount(0);
   await page.getByRole('textbox', { name: 'Sign-in code', exact: true }).fill('123456');

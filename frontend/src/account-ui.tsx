@@ -5,7 +5,7 @@ import { useRouter } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ActivityIndicator, ScrollView, View } from 'react-native';
 import { profileKey, updateProfile, useProfile } from './api';
-import { sendSignInCode, signOut, useAuth, verifySignInCode } from './auth';
+import { sendSignInCode, signInWithPassword, signOut, signUpWithPassword, useAuth, verifySignInCode } from './auth';
 import { Brand, Button, Copy, Field, Notice, Panel, Sheet, ThemeButton, useTheme } from './ui';
 
 export function AccountPage({ title, children, wide }: PropsWithChildren<{ title: string; wide?: boolean }>) {
@@ -34,6 +34,7 @@ export function AccountLoading() {
 
 export function SignInForm({ inviting = false }: { inviting?: boolean }) {
   const auth = useAuth();
+  const [passwordMode, setPasswordMode] = useState<'create' | 'sign-in' | null>(null);
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [sent, setSent] = useState(false);
@@ -73,6 +74,11 @@ export function SignInForm({ inviting = false }: { inviting?: boolean }) {
     }
   }
 
+  if (passwordMode) return <PasswordForm key={passwordMode} creating={passwordMode === 'create'} onBack={value => {
+    if (value) setEmail(value);
+    setPasswordMode(null);
+  }} />;
+
   return (
     <Panel style={{ padding: 22, gap: 16 }}>
       <Copy heading size={29} weight="800">{inviting ? 'Sign in to join the cart' : 'Sign in to Split'}</Copy>
@@ -95,10 +101,56 @@ export function SignInForm({ inviting = false }: { inviting?: boolean }) {
                 <Button label="Resend code" compact variant="quiet" busy={sending} disabled={verifying} onPress={() => void send()} />
               </View>
             </> :
-            <Button label="Send sign-in code" onPress={() => void send()} disabled={!validEmail} busy={sending} />}
+            <>
+              <Button label="Send sign-in code" onPress={() => void send()} disabled={!validEmail} busy={sending} />
+              <Button label="Create account with password" variant="secondary" disabled={busy} onPress={() => setPasswordMode('create')} />
+              <Button label="Sign in with password" variant="quiet" disabled={busy} onPress={() => setPasswordMode('sign-in')} />
+            </>}
         </>}
     </Panel>
   );
+}
+
+function PasswordForm({ creating, onBack }: { creating: boolean; onBack: (email?: string) => void }) {
+  const auth = useAuth();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [verifyEmail, setVerifyEmail] = useState(false);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const cleanEmail = email.trim().toLowerCase();
+  const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail) && password.length >= (creating ? 8 : 1);
+  async function save() {
+    if (!valid || busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      const signedIn = await (creating ? signUpWithPassword(cleanEmail, password) : signInWithPassword(cleanEmail, password));
+      setPassword('');
+      if (signedIn) auth.retry();
+      else setVerifyEmail(true);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Split could not complete the request.');
+    } finally {
+      setBusy(false);
+    }
+  }
+  if (verifyEmail) return <Panel style={{ padding: 22, gap: 16 }}>
+    <Copy heading size={29} weight="800">Verify your email</Copy>
+    <Copy muted>Use a one-time code to verify your email and finish signing in.</Copy>
+    <Button label="Continue with an email code" onPress={() => onBack(cleanEmail)} />
+  </Panel>;
+  return <Panel style={{ padding: 22, gap: 16 }}>
+    <Copy heading size={29} weight="800">{creating ? 'Create your account' : 'Sign in with password'}</Copy>
+    <Field label="Email address" value={email} onChangeText={setEmail} keyboardType="email-address"
+      autoComplete="email" autoCapitalize="none" autoCorrect={false} maxLength={254} autoFocus />
+    <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry
+      autoComplete={creating ? 'new-password' : 'current-password'} maxLength={128} onSubmitEditing={() => void save()} />
+    {creating && <Copy size={13} muted>Use at least 8 characters.</Copy>}
+    {!!error && <Notice>{error}</Notice>}
+    <Button label={creating ? 'Create account' : 'Sign in'} onPress={() => void save()} disabled={!valid} busy={busy} />
+    <Button label="Use an email code instead" variant="quiet" disabled={busy} onPress={() => onBack(cleanEmail)} />
+  </Panel>;
 }
 
 export function ProfileSetup() {

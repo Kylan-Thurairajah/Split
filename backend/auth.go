@@ -79,18 +79,19 @@ func (v *authVerifier) Verify(ctx context.Context, bearer string) (Identity, err
 	}
 
 	var claims struct {
-		Subject   string          `json:"sub"`
-		Name      string          `json:"name"`
-		Role      string          `json:"role"`
-		Banned    bool            `json:"banned"`
-		Issuer    string          `json:"iss"`
-		Audience  json.RawMessage `json:"aud"`
-		ExpiresAt int64           `json:"exp"`
-		NotBefore int64           `json:"nbf"`
+		Subject       string          `json:"sub"`
+		Name          string          `json:"name"`
+		Role          string          `json:"role"`
+		Banned        bool            `json:"banned"`
+		EmailVerified bool            `json:"emailVerified"`
+		Issuer        string          `json:"iss"`
+		Audience      json.RawMessage `json:"aud"`
+		ExpiresAt     int64           `json:"exp"`
+		NotBefore     int64           `json:"nbf"`
 	}
 	if !decodeTokenPart(parts[1], &claims) || claims.Issuer != v.issuer ||
 		!includesAudience(claims.Audience, v.audience) || !validSubject(claims.Subject) ||
-		(claims.Role != "authenticated" && claims.Role != "admin") || claims.Banned ||
+		(claims.Role != "authenticated" && claims.Role != "admin") || claims.Banned || !claims.EmailVerified ||
 		claims.ExpiresAt <= time.Now().Unix() || claims.NotBefore > time.Now().Unix() {
 		return Identity{}, errInvalidIdentity
 	}
