@@ -6,7 +6,8 @@ import { Image, ScrollView, View, useWindowDimensions } from 'react-native';
 import { Plus, ShoppingBag, Users } from '../src/icons';
 import { cartKey, createCart } from '../src/api';
 import { useAuth } from '../src/auth';
-import { AvatarStack, Brand, Button, Copy, Field, Notice, Panel, Price, Sheet, ThemeButton, useTheme } from '../src/ui';
+import { HeaderControls } from '../src/account-ui';
+import { AvatarStack, Brand, Button, Copy, Field, Notice, Panel, Price, Sheet, useTheme } from '../src/ui';
 
 const people = [
   { id: 'alex', name: 'Alex', color: '#D7C2F4' },
@@ -46,18 +47,19 @@ export default function Landing() {
     }
   }
 
-  return <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ flexGrow: 1 }}>
+  return <View style={{ flex: 1, backgroundColor: colors.background }}>
     <Head><title>Split | Shopping is better together</title></Head>
-    <View style={{ borderBottomWidth: 1, borderColor: colors.border }}>
+    <View style={{ zIndex: 1, borderBottomWidth: 1, borderColor: colors.border }}>
       <View style={{ width: '100%', maxWidth: 1192, alignSelf: 'center', paddingHorizontal: 22, height: 66, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <Brand />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           {auth.enabled && <Button label={auth.user ? 'My carts' : 'Sign in'} compact variant="quiet"
             disabled={auth.pending} onPress={() => router.push(auth.user ? '/my-carts' : '/sign-in')} />}
-          <ThemeButton />
+          <HeaderControls />
         </View>
       </View>
     </View>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }}>
     <View style={{
       width: '100%', maxWidth: 1192, alignSelf: 'center', paddingHorizontal: 22, paddingVertical: compact ? 48 : 86,
       flexDirection: compact ? 'column' : 'row', alignItems: compact ? 'stretch' : 'center', gap: compact ? 32 : 74,
@@ -108,5 +110,6 @@ export default function Landing() {
       {!!error && <Notice>{error}</Notice>}
       <Button label="Create cart" disabled={!name.trim()} busy={busy} onPress={() => void open(false)} />
     </Sheet>}
-  </ScrollView>;
+    </ScrollView>
+  </View>;
 }

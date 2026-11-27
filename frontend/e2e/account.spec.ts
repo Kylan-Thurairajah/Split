@@ -103,6 +103,8 @@ test('private carts restore after reload and require a signed-in account', async
   await expect(page).toHaveURL(/\/my-carts/);
   await page.getByRole('textbox', { name: 'Display name', exact: true }).fill(principal.name);
   await page.getByRole('button', { name: 'Save display name', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Account menu', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Use dark mode', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Use light mode', exact: true })).toBeVisible();
 
@@ -113,12 +115,21 @@ test('private carts restore after reload and require a signed-in account', async
   await expect(page.getByText('Live', { exact: true })).toBeVisible();
 
   await page.goto('/my-carts');
+  await page.getByRole('link', { name: 'Split home', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Account menu', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Use light mode', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'My carts', exact: true }).click();
   await expect(page.getByRole('link', { name: cart.name, exact: true })).toBeVisible();
   await page.getByRole('link', { name: receipt.name, exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Checkout complete', exact: true })).toBeVisible();
   await expect(page.getByText(/simulated checkout|demo checkout/i)).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Download receipt', exact: true })).toBeVisible();
-  await page.goto('/my-carts');
+  const accountMenu = page.getByRole('button', { name: 'Account menu', exact: true });
+  await accountMenu.click();
+  await expect(accountMenu).toHaveAttribute('aria-expanded', 'true');
+  await page.keyboard.press('Escape');
+  await expect(accountMenu).toHaveAttribute('aria-expanded', 'false');
+  await accountMenu.click();
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
   await expect(page).toHaveURL(new URL('/', baseURL).href);
   await page.goto('/cart/' + cartId);

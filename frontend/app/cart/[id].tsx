@@ -9,8 +9,9 @@ import { CartActivity, InviteManager } from '../../src/cart-sharing';
 import { Breakdown, ItemRow, Readiness, ReceiptItems } from '../../src/cart-parts';
 import { AllocationBar, AllocationEditor, ItemEditor, useReducedMotion } from '../../src/editors';
 import { activityText, dollars, receiptText, reprice } from '../../src/model';
+import { AccountPage, HeaderControls } from '../../src/account-ui';
 import type { Cart, Change, Item } from '../../src/model';
-import { Avatar, AvatarStack, Brand, Button, Copy, IconButton, Notice, Panel, Price, Sheet, ThemeButton, useTheme } from '../../src/ui';
+import { Avatar, AvatarStack, Brand, Button, Copy, IconButton, Notice, Panel, Price, Sheet, useTheme } from '../../src/ui';
 
 type Dialog = { kind: 'item'; item?: Item; version: number } | { kind: 'allocate'; item: Item; version: number } |
   { kind: 'remove'; item: Item; version: number } | { kind: 'reset' } | { kind: 'share' } | { kind: 'invite' };
@@ -150,8 +151,7 @@ export default function CartScreen() {
     setReview(true);
   }
 
-  if (!cart) return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background, gap: 15, padding: 20 }}>
-    <Brand onPress={() => router.replace('/')} />
+  if (!cart) return <AccountPage title="Cart">
     {query.isPending ? <ActivityIndicator color={colors.accent} /> : <>
       <Notice>{query.error instanceof APIError && [403, 404].includes(query.error.status) && auth.user
         ? 'This cart is unavailable. You may no longer have access.'
@@ -162,7 +162,7 @@ export default function CartScreen() {
       <Button label="Try again" onPress={() => void query.refetch()} />
       <Button label="Back to Split" variant="quiet" onPress={() => router.replace('/')} />
     </>}
-  </View>;
+  </AccountPage>;
 
   const activePerson = cart.participants.find(person => person.id === actor) ?? cart.participants[0];
   const activityPerson = cart.participants.find(person => person.id === cart.activity?.actor);
@@ -172,7 +172,7 @@ export default function CartScreen() {
 
   return <View style={{ flex: 1, backgroundColor: colors.background }}>
     <Head><title>{cart.name + ' | Split'}</title></Head>
-    <View style={{ borderBottomWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
+    <View style={{ zIndex: 1, borderBottomWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
       <View style={{
         width: '100%', maxWidth: 1192, alignSelf: 'center', paddingHorizontal: compact ? 14 : 22,
         height: 63, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -186,8 +186,7 @@ export default function CartScreen() {
           <Live active={connected} />
           {cart.access === 'owner' && <IconButton label="Invite collaborators" icon={Link2} onPress={() => setDialog({ kind: 'invite' })} />}
           {!cart.access && <IconButton label="Share cart" icon={Link2} onPress={() => { setCopied(false); setDialog({ kind: 'share' }); }} />}
-          <ThemeButton />
-          <Avatar person={activePerson} size={29} />
+          <HeaderControls person={activePerson} />
         </View>
       </View>
     </View>

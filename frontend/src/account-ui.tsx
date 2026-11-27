@@ -1,29 +1,88 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { PropsWithChildren } from 'react';
 import Head from 'expo-router/head';
 import { useRouter } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ActivityIndicator, ScrollView, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
 import { profileKey, updateProfile, useProfile } from './api';
 import { sendSignInCode, signOut, useAuth, verifySignInCode } from './auth';
-import { Brand, Button, Copy, Field, Notice, Panel, Sheet, ThemeButton, useTheme } from './ui';
+import { Avatar, Brand, Button, Copy, Field, Notice, Panel, Sheet, ThemeButton, useTheme } from './ui';
+import type { Participant } from './model';
+
+function AccountMenu({ person }: { person?: Participant }) {
+  const { user } = useAuth();
+  const profile = useProfile();
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const container = useRef<View>(null);
+  const trigger = useRef<View>(null);
+  const logout = useMutation({
+    mutationFn: signOut,
+    onSuccess: () => { setOpen(false); router.replace('/'); },
+  });
+
+  useEffect(() => {
+    if (!open || logout.isPending || typeof document === 'undefined') return;
+    function outside(event: PointerEvent) {
+      const element = container.current as unknown as HTMLElement | null;
+      if (event.target instanceof Node && !element?.contains(event.target)) setOpen(false);
+    }
+    function escape(event: KeyboardEvent) {
+      if (event.key !== 'Escape') return;
+      setOpen(false);
+      (trigger.current as unknown as HTMLElement | null)?.focus();
+    }
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('pointerdown', outside);
+      document.removeEventListener('keydown', escape);
+    };
+  }, [open, logout.isPending]);
+
+  if (!user) return person ? <Avatar person={person} size={29} /> : null;
+  const accountName = profile.data?.name || user.name || user.email;
+  return <View ref={container} style={{ position: 'relative', zIndex: 10 }}>
+    <Pressable ref={trigger} accessibilityRole="button" accessibilityLabel="Account menu"
+      aria-expanded={open} disabled={logout.isPending}
+      onPress={() => { logout.reset(); setOpen(value => !value); }}
+      style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 20 }}>
+      <Avatar person={{ id: user.id, name: accountName, color: person?.color ?? '#D7C2F4' }} size={29} />
+    </Pressable>
+    {open && <View style={{ position: 'absolute', top: 46, right: 0, width: 120 }}>
+      <Panel style={{ padding: 8, gap: 6 }}>
+        {logout.error && <Notice>{logout.error.message}</Notice>}
+        <Button label="Sign out" variant="secondary" compact busy={logout.isPending} onPress={() => logout.mutate()} />
+      </Panel>
+    </View>}
+  </View>;
+}
+
+export function HeaderControls({ person }: { person?: Participant }) {
+  return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+    <ThemeButton />
+    <AccountMenu person={person} />
+  </View>;
+}
 
 export function AccountPage({ title, children, wide }: PropsWithChildren<{ title: string; wide?: boolean }>) {
   const { colors } = useTheme();
   const router = useRouter();
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.background }}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
       <Head><title>{title + ' | Split'}</title></Head>
-      <View style={{ borderBottomWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
+      <View style={{ zIndex: 1, borderBottomWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
         <View style={{ width: '100%', maxWidth: 1192, alignSelf: 'center', paddingHorizontal: 20, height: 64, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <Brand onPress={() => router.replace('/')} />
-          <ThemeButton />
+          <HeaderControls />
         </View>
       </View>
-      <View style={{ width: '100%', maxWidth: wide ? 960 : 480, alignSelf: 'center', paddingHorizontal: 16, paddingVertical: 38, gap: 18 }}>
-        {children}
-      </View>
-    </ScrollView>
+      <ScrollView style={{ flex: 1 }}>
+        <View style={{ width: '100%', maxWidth: wide ? 960 : 480, alignSelf: 'center', paddingHorizontal: 16, paddingVertical: 38, gap: 18 }}>
+          {children}
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 

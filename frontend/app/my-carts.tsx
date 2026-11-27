@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Pressable, View } from 'react-native';
 import { AccountLoading, AccountPage } from '../src/account-ui';
 import { cartKey, cartsKey, createCart, loadCarts, useProfile } from '../src/api';
-import { signOut, useAuth } from '../src/auth';
+import { useAuth } from '../src/auth';
 import { Plus, ReceiptText, ShoppingBag } from '../src/icons';
 import type { Cart } from '../src/model';
 import { dollars } from '../src/model';
@@ -38,7 +38,6 @@ export default function MyCartsPage() {
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [creating, setCreating] = useState(false);
-  const [signingOut, setSigningOut] = useState(false);
   const account = auth.user?.id;
   const profile = useProfile();
   const list = useQuery({ queryKey: cartsKey(account), queryFn: ({ signal }) => loadCarts(signal), enabled: !!account, retry: false });
@@ -61,19 +60,6 @@ export default function MyCartsPage() {
     }
   }
 
-  async function logout() {
-    setSigningOut(true);
-    setError('');
-    try {
-      await signOut();
-      router.replace('/');
-    } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'Split could not sign you out.');
-    } finally {
-      setSigningOut(false);
-    }
-  }
-
   if (!auth.user && auth.enabled && !auth.pending && !auth.error) return <Redirect href="/sign-in" />;
 
   return <AccountPage title="My carts" wide>
@@ -86,10 +72,7 @@ export default function MyCartsPage() {
             <Copy heading size={36} weight="800">My carts</Copy>
             <Copy muted>{profile.data?.name || auth.user?.name || auth.user?.email}</Copy>
           </View>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            <Button label="Sign out" variant="secondary" busy={signingOut} onPress={() => void logout()} />
-            <Button label="New private cart" icon={Plus} onPress={() => { setName(''); setError(''); setShowCreate(true); }} />
-          </View>
+          <Button label="New private cart" icon={Plus} onPress={() => { setName(''); setError(''); setShowCreate(true); }} />
         </View>
         {!showCreate && !!error && <Notice>{error}</Notice>}
         {list.isPending ? <AccountLoading /> : list.error ? <>
